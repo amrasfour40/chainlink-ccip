@@ -178,7 +178,7 @@ func TestApplyExecutorConfig_Validation(t *testing.T) {
 			env:  deployment.Environment{Name: "mainnet", BlockChains: newExecutorTestBlockChains([]uint64{sel1})},
 			input: changesets.ApplyExecutorConfigInput{
 				Topology: func() *offchain.EnvironmentTopology {
-					topo := newMinimalTopology(makeTestNOPAliases(15), "pool1", "")
+					topo := newMinimalTopology(makeTestNOPAliases(9), "pool1", "")
 					topo.PyroscopeURL = "http://pyroscope"
 					return topo
 				}(),
