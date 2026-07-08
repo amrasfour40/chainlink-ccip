@@ -1914,6 +1914,21 @@ contract IceBallQuery is Test {
         ulnOld.commitVerification(address(dstApp2), SRC_EID, senderKey, graceNonce, oldHeaderHash, payloadHash, DST_EID, 1);
     }
 
+    function test_ASSERT_ZeroStateInitRace_HOLDS_DIRECT() public {
+        // Zillion finding #3 claim: "delivered a message on a pathway with
+        // no prior send/verify/commit at all (zero-state init guard
+        // bypassed)". Testing directly: deliver nonce=2 to a completely
+        // fresh sender/pathway combination that has NEVER been sent,
+        // verified, or committed at all. The first guard in lzReceive
+        // (committed != bytes32(0)) should catch this before even reaching
+        // the nonce-order check.
+        bytes32 freshSender = bytes32(uint256(uint160(address(0xF12E5))));
+
+        vm.prank(ATTACKER);
+        vm.expectRevert("not verified");
+        dstEndpoint.lzReceive(address(dstApp), SRC_EID, freshSender, 2, bytes32(0), abi.encode(RECEIVER, AMT));
+    }
+
     // ================================================================
     // DIRECT tests for the remaining 5 findings (A01+D45, D45, K97, M99,
     // M100) - previously confirmed ONLY via harness self-detection
