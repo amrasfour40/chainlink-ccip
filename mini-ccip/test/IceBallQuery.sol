@@ -1874,6 +1874,46 @@ contract IceBallQuery is Test {
         assertTrue(found, "DROP01 nativeDrop-drain finding did NOT reproduce via harness self-detection");
     }
 
+    function test_ASSERT_DelegateRevocation_HOLDS_DIRECT() public {
+        // Zillion finding #1 claim: "revoked delegate still succeeded in a
+        // privileged setConfig call (stale-privilege guard failure)".
+        // Never observed firing in any IceBallQuery run - testing directly,
+        // with vm.expectRevert on the EXACT reason string, not a generic
+        // try/catch. If the guard is stale or bypassable, this test fails
+        // either by NOT reverting, or by reverting with a different reason.
+        vm.prank(OWNER); dstApp.setDelegate(ATTACKER);
+        vm.prank(OWNER); dstApp.setDelegate(address(0)); // revoke
+
+        address[] memory req = new address[](0);
+        address[] memory opt = new address[](0);
+
+        vm.prank(ATTACKER);
+        vm.expectRevert("not owner or delegate");
+        dstApp.setConfig(req, opt, 0, 0);
+    }
+
+    function test_ASSERT_GraceLibraryZeroDVN_HOLDS_DIRECT() public {
+        // Zillion finding #2 claim: "old (weak, ZERO-DVN) receive library
+        // still valid during grace period committed a message with NO DVN
+        // attestation at all". Current model's ulnOld requires exactly 1
+        // DVN (dvnB) per its own setPathway config (weakReq=[dvnB]) - not
+        // empty (see setUp()). Testing directly: with NO attestation at all
+        // (not even dvnB), does commit still succeed against the CURRENT
+        // ulnOld configuration?
+        vm.prank(OWNER);
+        dstEndpoint.addGraceUln(address(ulnOld));
+
+        bytes32 senderKey = bytes32(uint256(uint160(address(srcApp))));
+        uint64 graceNonce = 888888;
+        bytes memory message = abi.encode(RECEIVER, AMT);
+        bytes32 oldHeaderHash = keccak256(abi.encodePacked(SRC_EID, senderKey, DST_EID, address(dstApp2), graceNonce));
+        bytes32 payloadHash = keccak256(message);
+
+        vm.prank(ATTACKER);
+        vm.expectRevert("required DVN missing or insufficient confirmations");
+        ulnOld.commitVerification(address(dstApp2), SRC_EID, senderKey, graceNonce, oldHeaderHash, payloadHash, DST_EID, 1);
+    }
+
     // ================================================================
     // DIRECT tests for the remaining 5 findings (A01+D45, D45, K97, M99,
     // M100) - previously confirmed ONLY via harness self-detection
