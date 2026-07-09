@@ -1,0 +1,9 @@
+[submodule "mini-ccip/lib/LayerZero-v2"]
+	path = mini-ccip/lib/LayerZero-v2
+	url = https://github.com/LayerZero-Labs/LayerZero-v2
+[submodule "mini-ccip/lib/devtools"]
+	path = mini-ccip/lib/devtools
+	url = https://github.com/layerzero-labs/devtools
+[submodule "mini-ccip/lib/openzeppelin-contracts"]
+	path = mini-ccip/lib/openzeppelin-contracts
+	url = https://github.com/OpenZeppelin/openzeppelin-contracts
