@@ -2715,4 +2715,42 @@ contract IceBallQuery is Test {
         assertEq(dstApp.balanceOf(RECEIVER), AMT, "reentrancy corrupted recipient balance - not exactly AMT");
     }
 
+
+    function test_ASSERT_PeerValidation_HOLDS_DIRECT() public {
+        // Zillion findings #13/#14 claim: zero-address peer accepted / peer
+        // mismatch accepted. Broader check first: is the receiving side's
+        // "sender" ever validated against the OApp's own configured peer
+        // AT ALL? Confirmed by exhaustive grep: peers[] is referenced only
+        // twice in the whole file, both on the SEND side. Testing directly:
+        // set dstApp's peer for SRC_EID to something UNRELATED to srcApp's
+        // real address, then attempt an otherwise fully honest commit+
+        // deliver using srcApp's actual sender key (which will NOT match
+        // the configured peer at all).
+        vm.prank(OWNER);
+        dstApp.setPeer(SRC_EID, bytes32(uint256(uint160(address(0xBADBAD1234)))));
+
+        vm.prank(ALICE);
+        (bytes memory honestMessage, uint64 nonce) = srcApp.send(DST_EID, RECEIVER, AMT);
+        bytes32 senderKey = bytes32(uint256(uint160(address(srcApp))));
+        bytes32 headerHash = keccak256(abi.encodePacked(SRC_EID, senderKey, DST_EID, address(dstApp), nonce));
+        bytes32 guid = _computeGuid(nonce, SRC_EID, senderKey, DST_EID, address(dstApp));
+        bytes memory guidCombined = abi.encodePacked(guid, honestMessage);
+
+        vm.prank(dvnA.currentSigner());
+        dvnA.attest(headerHash, guidCombined, guidCombined, 10, 100);
+        vm.prank(address(dvnB));
+        dvnB.attest(headerHash, guidCombined, guidCombined, 10, 100);
+
+        bytes32 honestPayloadHash = keccak256(guidCombined);
+
+        vm.prank(ATTACKER);
+        uln.commitVerification(address(dstApp), SRC_EID, senderKey, nonce, headerHash, honestPayloadHash, DST_EID, 1);
+
+        vm.prank(ATTACKER);
+        dstEndpoint.lzReceive(address(dstApp), SRC_EID, senderKey, nonce, guid, honestMessage);
+
+        uint256 receiverBal = dstApp.balanceOf(RECEIVER);
+        assertEq(receiverBal, AMT, "peer mismatch DID prevent delivery - findings #13/#14 would be false positives after all");
+    }
+
 }
