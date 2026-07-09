@@ -2066,6 +2066,75 @@ contract IceBallQuery is Test {
         uln.commitVerification(address(dstApp), SRC_EID, senderKey, nonce, headerHash, payloadHash, DST_EID, 1);
     }
 
+    function test_ASSERT_TamperAfterVerify_HOLDS_DIRECT_V2() public {
+        // V1 was BROKEN, not a real finding either way - DVN.attest()
+        // hashes whatever bytes it's given (keccak256(realMessage)), but
+        // I passed the raw message while commitVerification needs
+        // payloadHash = keccak256(abi.encodePacked(guid, message)) to
+        // later match lzReceive's check. These never aligned, so V1's
+        // "required DVN missing" failure was a test-construction bug, not
+        // a signal about the finding. NOTE: this same mismatch exists in
+        // the harness's own _run() baseline (line ~771/774 pass raw
+        // message to attest, line ~931 uses guid-combined payloadHash) -
+        // worth flagging separately as a harness quirk.
+        //
+        // Fixed here by passing the GUID-COMBINED bytes into DVN.attest,
+        // so the DVN's stored hash actually matches what commitVerification
+        // and lzReceive both expect - giving a genuinely consistent,
+        // honestly-verified commit to tamper against. SANITY CHECK ONLY
+        // for now - confirms honest delivery works before testing tamper.
+        vm.prank(ALICE);
+        (bytes memory honestMessage, uint64 nonce) = srcApp.send(DST_EID, RECEIVER, AMT);
+        bytes32 senderKey = bytes32(uint256(uint160(address(srcApp))));
+        bytes32 headerHash = keccak256(abi.encodePacked(SRC_EID, senderKey, DST_EID, address(dstApp), nonce));
+        bytes32 guid = _computeGuid(nonce, SRC_EID, senderKey, DST_EID, address(dstApp));
+        bytes memory guidCombined = abi.encodePacked(guid, honestMessage);
+
+        vm.prank(dvnA.currentSigner());
+        dvnA.attest(headerHash, guidCombined, guidCombined, 10, 100);
+        vm.prank(address(dvnB));
+        dvnB.attest(headerHash, guidCombined, guidCombined, 10, 100);
+
+        bytes32 honestPayloadHash = keccak256(guidCombined);
+
+        vm.prank(ATTACKER);
+        uln.commitVerification(address(dstApp), SRC_EID, senderKey, nonce, headerHash, honestPayloadHash, DST_EID, 1);
+
+        vm.prank(ATTACKER);
+        dstEndpoint.lzReceive(address(dstApp), SRC_EID, senderKey, nonce, guid, honestMessage);
+        assertEq(dstApp.balanceOf(RECEIVER), 1000 ether, "sanity: honest delivery must succeed first");
+    }
+
+    function test_ASSERT_TamperAfterVerify_HOLDS_DIRECT_FINAL() public {
+        // Zillion finding #9 claim: "delivered payload differs from
+        // committed hash - attacker minted". Building on the confirmed-
+        // working V2 sanity check: same honest, hash-consistent commit,
+        // but now attempt delivery with a TAMPERED (10x inflated) message
+        // instead of the honest one, same guid/nonce.
+        vm.prank(ALICE);
+        (bytes memory honestMessage, uint64 nonce) = srcApp.send(DST_EID, RECEIVER, AMT);
+        bytes32 senderKey = bytes32(uint256(uint160(address(srcApp))));
+        bytes32 headerHash = keccak256(abi.encodePacked(SRC_EID, senderKey, DST_EID, address(dstApp), nonce));
+        bytes32 guid = _computeGuid(nonce, SRC_EID, senderKey, DST_EID, address(dstApp));
+        bytes memory guidCombined = abi.encodePacked(guid, honestMessage);
+
+        vm.prank(dvnA.currentSigner());
+        dvnA.attest(headerHash, guidCombined, guidCombined, 10, 100);
+        vm.prank(address(dvnB));
+        dvnB.attest(headerHash, guidCombined, guidCombined, 10, 100);
+
+        bytes32 honestPayloadHash = keccak256(guidCombined);
+
+        vm.prank(ATTACKER);
+        uln.commitVerification(address(dstApp), SRC_EID, senderKey, nonce, headerHash, honestPayloadHash, DST_EID, 1);
+
+        bytes memory tamperedMessage = abi.encode(ATTACKER, AMT * 10);
+
+        vm.prank(ATTACKER);
+        vm.expectRevert("payload mismatch");
+        dstEndpoint.lzReceive(address(dstApp), SRC_EID, senderKey, nonce, guid, tamperedMessage);
+    }
+
     // ================================================================
     // DIRECT tests for the remaining 5 findings (A01+D45, D45, K97, M99,
     // M100) - previously confirmed ONLY via harness self-detection
