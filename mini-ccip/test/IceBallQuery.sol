@@ -2041,6 +2041,31 @@ contract IceBallQuery is Test {
         dstEndpoint.lzCompose(address(dstApp), address(dstApp), neverQueuedGuid, 0, forgedMsg);
     }
 
+    function test_ASSERT_A01Alone_HOLDS_DIRECT() public {
+        // Zillion finding #8 claim: A01 ALONE (skip required-DVN
+        // attestation, WITHOUT also wiping the pathway via D45) causes
+        // commitVerification to succeed with zero required-DVN attestation.
+        // Already strongly suspected false based on existing code comments
+        // ("A01 alone no longer reproduces") and the confirmed A01+D45
+        // combined test requiring both conditions - but testing this
+        // specific, isolated claim directly rather than relying on
+        // documentation of a prior investigation.
+        vm.prank(ALICE);
+        (bytes memory message, uint64 nonce) = srcApp.send(DST_EID, RECEIVER, AMT);
+        bytes32 senderKey = bytes32(uint256(uint160(address(srcApp))));
+        bytes32 headerHash = keccak256(abi.encodePacked(SRC_EID, senderKey, DST_EID, address(dstApp), nonce));
+
+        vm.prank(address(dvnB));
+        dvnB.attest(headerHash, message, message, 10, 100);
+
+        bytes32 guid = _computeGuid(nonce, SRC_EID, senderKey, DST_EID, address(dstApp));
+        bytes32 payloadHash = keccak256(abi.encodePacked(guid, message));
+
+        vm.prank(ATTACKER);
+        vm.expectRevert("required DVN missing or insufficient confirmations");
+        uln.commitVerification(address(dstApp), SRC_EID, senderKey, nonce, headerHash, payloadHash, DST_EID, 1);
+    }
+
     // ================================================================
     // DIRECT tests for the remaining 5 findings (A01+D45, D45, K97, M99,
     // M100) - previously confirmed ONLY via harness self-detection
