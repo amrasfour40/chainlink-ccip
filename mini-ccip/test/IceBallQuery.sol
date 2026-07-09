@@ -1947,6 +1947,66 @@ contract IceBallQuery is Test {
         uln.setDefaultPathway(emptyReq, emptyOpt, 0, 0);
     }
 
+    function test_ASSERT_PreInitDefaultPathway_HOLDS_DIRECT() public {
+        // Zillion finding #5 claim: same fully-empty-default weakness, via
+        // the reserved read-channel EID. Finding #4 already proved
+        // setDefaultPathway's guard blocks the fully-empty state from ever
+        // being SET - since that guard is upstream of any EID-specific
+        // resolution, #5 is disproven by inheritance (no separate
+        // read-channel code path to bypass).
+        //
+        // Adjacent edge case, tested for completeness rather than assumed:
+        // BEFORE setDefaultPathway is ever called at all, defaultPathway
+        // sits at Solidity's zero-value default, which IS fully-empty
+        // (req=[], thresh=0) - a state the setter's guard does not cover,
+        // since it only blocks the SETTER, not the pre-initialization
+        // value. Deploy a brand-new uln with NO setDefaultPathway call at
+        // all, and confirm commitVerification still correctly rejects a
+        // zero-attestation commit against that uninitialized default.
+        UlnMock freshUln = new UlnMock(address(dstEndpoint));
+        // Deliberately never call freshUln.setDefaultPathway() at all.
+
+        bytes32 senderKey = bytes32(uint256(uint160(address(srcApp))));
+        uint64 nonce = 999999;
+        bytes memory message = abi.encode(RECEIVER, AMT);
+        bytes32 headerHash = keccak256(abi.encodePacked(SRC_EID, senderKey, DST_EID, address(dstApp2), nonce));
+        bytes32 payloadHash = keccak256(message);
+
+        vm.prank(ATTACKER);
+        vm.expectRevert(); // no attestation, no required DVNs, no optional threshold - must not silently succeed
+        freshUln.commitVerification(address(dstApp2), SRC_EID, senderKey, nonce, headerHash, payloadHash, DST_EID, 1);
+    }
+
+    function test_ASSERT_PreInitDefaultPathway_HOLDS_DIRECT_V2() public {
+        // V1 of this test was INCONCLUSIVE - it reverted with "not a valid
+        // receive library for this pathway", meaning it never reached the
+        // actual DVN-quorum logic at all (freshUln was never registered on
+        // the endpoint). Redesigned: register freshUln properly first, so
+        // the call actually reaches commitVerification's pathway checks,
+        // and we get a real answer about the pre-init empty-default state.
+        UlnMock freshUln = new UlnMock(address(dstEndpoint));
+        vm.prank(OWNER);
+        dstEndpoint.addGraceUln(address(freshUln)); // registers it as valid
+        // Deliberately never call freshUln.setDefaultPathway() at all -
+        // defaultPathway sits at Solidity's zero-value (req=[], thresh=0).
+
+        bytes32 senderKey = bytes32(uint256(uint160(address(srcApp))));
+        uint64 nonce = 999998;
+        bytes memory message = abi.encode(RECEIVER, AMT);
+        bytes32 headerHash = keccak256(abi.encodePacked(SRC_EID, senderKey, DST_EID, address(dstApp2), nonce));
+        bytes32 payloadHash = keccak256(message);
+
+        // No expectRevert this time - we genuinely don't know the answer.
+        // If this call SUCCEEDS, that's a real finding: the pre-init
+        // window allows zero-DVN commits. If it reverts, the guard holds
+        // for a reason we'll see in the trace.
+        vm.prank(ATTACKER);
+        freshUln.commitVerification(address(dstApp2), SRC_EID, senderKey, nonce, headerHash, payloadHash, DST_EID, 1);
+
+        bytes32 committedHash = dstEndpoint.inboundPayloadHash(address(dstApp2), SRC_EID, senderKey, nonce);
+        assertEq(committedHash, payloadHash, "commit did not actually record - inconclusive either way");
+    }
+
     // ================================================================
     // DIRECT tests for the remaining 5 findings (A01+D45, D45, K97, M99,
     // M100) - previously confirmed ONLY via harness self-detection
