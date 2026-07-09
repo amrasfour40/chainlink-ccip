@@ -7,3 +7,9 @@
 [submodule "mini-ccip/lib/openzeppelin-contracts"]
 	path = mini-ccip/lib/openzeppelin-contracts
 	url = https://github.com/OpenZeppelin/openzeppelin-contracts
+[submodule "mini-ccip/lib/solidity-bytes-utils"]
+	path = mini-ccip/lib/solidity-bytes-utils
+	url = https://github.com/GNSPS/solidity-bytes-utils
+[submodule "mini-ccip/lib/LayerZero-v1"]
+	path = mini-ccip/lib/LayerZero-v1
+	url = https://github.com/LayerZero-Labs/LayerZero-v1
