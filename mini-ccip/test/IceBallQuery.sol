@@ -2670,4 +2670,6 @@ contract IceBallQuery is Test {
         console2.log("Final tally - Critical:", critCount, "High:", highCount);
         console2.log("Final tally - Medium:", medCount, "Low:", lowCount);
     }
+
+
 }
