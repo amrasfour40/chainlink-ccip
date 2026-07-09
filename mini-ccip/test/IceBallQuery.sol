@@ -2172,6 +2172,49 @@ contract IceBallQuery is Test {
         assertEq(dstApp.balanceOf(RECEIVER), balAfterFirst, "double-delivery must not mint a second time");
     }
 
+    function test_ASSERT_OutOfOrderDelivery_HOLDS_DIRECT() public {
+        // Zillion finding #10 claim: "lossless channel ordering bypassed" -
+        // a later nonce delivered while an earlier, still-pending nonce was
+        // never delivered or explicitly skipped. Testing directly: send
+        // TWO messages (nonce=1, nonce=2), fully and honestly commit BOTH,
+        // then attempt to deliver nonce=2 FIRST, before nonce=1 has ever
+        // been delivered. The nonce-floor check should reject this, even
+        // though nonce=2's own commit is completely legitimate on its own.
+        vm.startPrank(ALICE);
+        (bytes memory message1, uint64 nonce1) = srcApp.send(DST_EID, RECEIVER, AMT);
+        (bytes memory message2, uint64 nonce2) = srcApp.send(DST_EID, RECEIVER, AMT);
+        vm.stopPrank();
+        assertEq(nonce2, nonce1 + 1, "sanity: nonces must be sequential");
+
+        bytes32 senderKey = bytes32(uint256(uint160(address(srcApp))));
+
+        bytes32 headerHash1 = keccak256(abi.encodePacked(SRC_EID, senderKey, DST_EID, address(dstApp), nonce1));
+        bytes32 guid1 = _computeGuid(nonce1, SRC_EID, senderKey, DST_EID, address(dstApp));
+        bytes memory guidCombined1 = abi.encodePacked(guid1, message1);
+        vm.prank(dvnA.currentSigner());
+        dvnA.attest(headerHash1, guidCombined1, guidCombined1, 10, 100);
+        vm.prank(address(dvnB));
+        dvnB.attest(headerHash1, guidCombined1, guidCombined1, 10, 100);
+        vm.prank(ATTACKER);
+        uln.commitVerification(address(dstApp), SRC_EID, senderKey, nonce1, headerHash1, keccak256(guidCombined1), DST_EID, 1);
+
+        bytes32 headerHash2 = keccak256(abi.encodePacked(SRC_EID, senderKey, DST_EID, address(dstApp), nonce2));
+        bytes32 guid2 = _computeGuid(nonce2, SRC_EID, senderKey, DST_EID, address(dstApp));
+        bytes memory guidCombined2 = abi.encodePacked(guid2, message2);
+        vm.prank(dvnA.currentSigner());
+        dvnA.attest(headerHash2, guidCombined2, guidCombined2, 10, 100);
+        vm.prank(address(dvnB));
+        dvnB.attest(headerHash2, guidCombined2, guidCombined2, 10, 100);
+        vm.prank(ATTACKER);
+        uln.commitVerification(address(dstApp), SRC_EID, senderKey, nonce2, headerHash2, keccak256(guidCombined2), DST_EID, 1);
+
+        vm.prank(ATTACKER);
+        vm.expectRevert("out of order: preceding nonce not delivered/skipped");
+        dstEndpoint.lzReceive(address(dstApp), SRC_EID, senderKey, nonce2, guid2, message2);
+
+        assertEq(dstApp.balanceOf(RECEIVER), 0, "out-of-order delivery must not credit anything");
+    }
+
     // ================================================================
     // DIRECT tests for the remaining 5 findings (A01+D45, D45, K97, M99,
     // M100) - previously confirmed ONLY via harness self-detection
