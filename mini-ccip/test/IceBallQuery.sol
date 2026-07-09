@@ -2298,6 +2298,38 @@ contract IceBallQuery is Test {
         assertTrue(receiverAfter > receiverBefore, "SPOOFED SENDER ACCEPTED: dstApp credited a message from a sender that never matched its own configured peer");
     }
 
+    function test_ASSERT_MismatchedPeer_HOLDS_DIRECT() public {
+        // Zillion finding #14 claim: "mismatched peer accepted" - distinct
+        // from #13's arbitrary/meaningless fake sender in that this uses a
+        // REAL, legitimate contract's address (dstApp2, a genuine deployed
+        // OApp in this same test suite) claiming to be dstApp's peer for
+        // SRC_EID - modeling actual cross-app/cross-chain peer confusion,
+        // not just random noise. dstApp.peers(SRC_EID) is configured to
+        // the real srcApp address; dstApp2 was never granted that role.
+        bytes32 mismatchedSender = bytes32(uint256(uint160(address(dstApp2))));
+        bytes32 realPeer = dstApp.peers(SRC_EID);
+        assertTrue(mismatchedSender != realPeer, "sanity: dstApp2 must not equal dstApp's real configured peer");
+
+        uint64 nonce = 1;
+        bytes memory message = abi.encode(RECEIVER, uint64(1000));
+        bytes32 headerHash = keccak256(abi.encodePacked(SRC_EID, mismatchedSender, DST_EID, address(dstApp), nonce));
+        bytes32 guid = _computeGuid(nonce, SRC_EID, mismatchedSender, DST_EID, address(dstApp));
+        bytes memory guidCombined = abi.encodePacked(guid, message);
+
+        vm.prank(dvnA.currentSigner());
+        dvnA.attest(headerHash, guidCombined, guidCombined, 10, 100);
+
+        vm.prank(ATTACKER);
+        uln.commitVerification(address(dstApp), SRC_EID, mismatchedSender, nonce, headerHash, keccak256(guidCombined), DST_EID, 1);
+
+        uint256 receiverBefore = dstApp.balanceOf(RECEIVER);
+        vm.prank(ATTACKER);
+        dstEndpoint.lzReceive(address(dstApp), SRC_EID, mismatchedSender, nonce, guid, message);
+        uint256 receiverAfter = dstApp.balanceOf(RECEIVER);
+
+        assertTrue(receiverAfter > receiverBefore, "MISMATCHED PEER ACCEPTED: dstApp credited a message from a real, legitimate contract that was never its configured peer for this eid");
+    }
+
     // ================================================================
     // DIRECT tests for the remaining 5 findings (A01+D45, D45, K97, M99,
     // M100) - previously confirmed ONLY via harness self-detection
