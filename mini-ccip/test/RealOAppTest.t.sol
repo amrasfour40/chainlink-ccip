@@ -73,4 +73,24 @@ contract RealOAppTest is TestHelperOz5 {
         assertEq(bApp.receivedCount(), receivedBefore, "SPOOFED MESSAGE WAS DELIVERED: bApp accepted a message from a sender it never configured as its peer");
         assertEq(bApp.lastMessage(), "", "SPOOFED MESSAGE CONTENT WAS ACCEPTED: bApp.lastMessage should remain empty");
     }
+
+    function test_ASSERT_DefaultUnorderedExecution_HOLDS_DIRECT() public {
+        // Real LayerZero-v2 docs state default execution is UNORDERED: if
+        // nonces 1 and 2 are both verified, nonce 2 can execute before or
+        // independent of nonce 1, with no protocol-level ordering
+        // enforcement unless the OApp itself implements it (MyRealOApp
+        // does not). Testing directly: send two messages, verify both,
+        // confirm both deliver successfully (ground truth: receivedCount).
+        bytes memory options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(200000, 0);
+
+        vm.prank(OWNER);
+        aApp.sendString{value: 1 ether}(bEid, "first message", options);
+        vm.prank(OWNER);
+        aApp.sendString{value: 1 ether}(bEid, "second message", options);
+
+        verifyPackets(bEid, address(bApp));
+
+        assertEq(bApp.receivedCount(), 2, "both messages should deliver under default unordered execution");
+    }
+
 }
