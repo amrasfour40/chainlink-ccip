@@ -2135,6 +2135,43 @@ contract IceBallQuery is Test {
         dstEndpoint.lzReceive(address(dstApp), SRC_EID, senderKey, nonce, guid, tamperedMessage);
     }
 
+    function test_ASSERT_DoubleDelivery_HOLDS_DIRECT() public {
+        // Zillion finding #11 claim: "double-delivery minted twice" - the
+        // same committed nonce delivered via lzReceive more than once,
+        // crediting the receiver twice from a single message. Testing
+        // directly: honest commit + first delivery (must succeed), then
+        // attempt to deliver the EXACT SAME nonce/guid/message a second
+        // time. The nonce-floor check (nonce == floor + 1) should reject
+        // it, since inboundNonce already advanced past it after delivery 1.
+        vm.prank(ALICE);
+        (bytes memory message, uint64 nonce) = srcApp.send(DST_EID, RECEIVER, AMT);
+        bytes32 senderKey = bytes32(uint256(uint160(address(srcApp))));
+        bytes32 headerHash = keccak256(abi.encodePacked(SRC_EID, senderKey, DST_EID, address(dstApp), nonce));
+        bytes32 guid = _computeGuid(nonce, SRC_EID, senderKey, DST_EID, address(dstApp));
+        bytes memory guidCombined = abi.encodePacked(guid, message);
+
+        vm.prank(dvnA.currentSigner());
+        dvnA.attest(headerHash, guidCombined, guidCombined, 10, 100);
+        vm.prank(address(dvnB));
+        dvnB.attest(headerHash, guidCombined, guidCombined, 10, 100);
+
+        bytes32 payloadHash = keccak256(guidCombined);
+
+        vm.prank(ATTACKER);
+        uln.commitVerification(address(dstApp), SRC_EID, senderKey, nonce, headerHash, payloadHash, DST_EID, 1);
+
+        vm.prank(ATTACKER);
+        dstEndpoint.lzReceive(address(dstApp), SRC_EID, senderKey, nonce, guid, message);
+        uint256 balAfterFirst = dstApp.balanceOf(RECEIVER);
+        assertEq(balAfterFirst, AMT, "sanity: first delivery must succeed and credit exactly AMT");
+
+        vm.prank(ATTACKER);
+        vm.expectRevert("out of order: preceding nonce not delivered/skipped");
+        dstEndpoint.lzReceive(address(dstApp), SRC_EID, senderKey, nonce, guid, message);
+
+        assertEq(dstApp.balanceOf(RECEIVER), balAfterFirst, "double-delivery must not mint a second time");
+    }
+
     // ================================================================
     // DIRECT tests for the remaining 5 findings (A01+D45, D45, K97, M99,
     // M100) - previously confirmed ONLY via harness self-detection
