@@ -2330,6 +2330,35 @@ contract IceBallQuery is Test {
         assertTrue(receiverAfter > receiverBefore, "MISMATCHED PEER ACCEPTED: dstApp credited a message from a real, legitimate contract that was never its configured peer for this eid");
     }
 
+    function test_ASSERT_PreInitDefaultPathway_ReadChannel_HOLDS_DIRECT() public {
+        // FINAL verification of finding #5. The original claim ("same
+        // fully-empty-default weakness via read-channel") was tested
+        // against finding #4's SETTER guard and correctly disproven by
+        // inheritance - no separate read-channel code path exists there.
+        // But finding 4b then discovered a SEPARATE, real gap: the
+        // PRE-INITIALIZATION state (before setDefaultPathway is ever
+        // called at all) is fully-empty by construction, and that gap is
+        // NOT covered by the setter's guard. This test closes the loop:
+        // does that SAME pre-init gap also apply via the reserved
+        // read-channel EID specifically, or does something about the
+        // read-channel path get different treatment?
+        UlnMock freshUln = new UlnMock(address(dstEndpoint));
+        vm.prank(OWNER);
+        dstEndpoint.addGraceUln(address(freshUln));
+
+        bytes32 senderKey = bytes32(uint256(uint160(address(srcApp))));
+        uint64 nonce = 777776;
+        bytes memory message = abi.encode(RECEIVER, AMT);
+        bytes32 headerHash = keccak256(abi.encodePacked(READ_CHANNEL_EID, senderKey, DST_EID, address(dstApp2), nonce));
+        bytes32 payloadHash = keccak256(message);
+
+        vm.prank(ATTACKER);
+        freshUln.commitVerification(address(dstApp2), READ_CHANNEL_EID, senderKey, nonce, headerHash, payloadHash, DST_EID, 1);
+
+        bytes32 committedHash = dstEndpoint.inboundPayloadHash(address(dstApp2), READ_CHANNEL_EID, senderKey, nonce);
+        assertEq(committedHash, payloadHash, "commit did not actually record");
+    }
+
     // ================================================================
     // DIRECT tests for the remaining 5 findings (A01+D45, D45, K97, M99,
     // M100) - previously confirmed ONLY via harness self-detection
