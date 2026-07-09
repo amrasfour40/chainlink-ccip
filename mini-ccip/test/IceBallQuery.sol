@@ -2672,4 +2672,47 @@ contract IceBallQuery is Test {
     }
 
 
+
+    function test_ASSERT_ReentrancySupplyInvariant_HOLDS_DIRECT() public {
+        // Zillion finding #12 claim: "supply increased beyond single
+        // legitimate delivery" (generic invariant, distinct from #11's
+        // narrow double-deliver flag). Most plausible distinct mechanism:
+        // the reentrant send() armed inside lzReceive (setReentrancy).
+        // Prediction (untested until now): this.send(...) is an external
+        // self-call, so msg.sender inside it becomes address(dstApp), not
+        // the recipient - meaning it checks balanceOf[address(dstApp)],
+        // which the token contract itself almost certainly doesn't hold,
+        // so the reentrant send should fail silently and do nothing.
+        // Testing directly rather than trusting that prediction.
+        vm.prank(OWNER);
+        dstApp.setReentrancy(true, SRC_EID);
+
+        uint256 supplyBefore = dstApp.totalSupply();
+
+        vm.prank(ALICE);
+        (bytes memory honestMessage, uint64 nonce) = srcApp.send(DST_EID, RECEIVER, AMT);
+        bytes32 senderKey = bytes32(uint256(uint160(address(srcApp))));
+        bytes32 headerHash = keccak256(abi.encodePacked(SRC_EID, senderKey, DST_EID, address(dstApp), nonce));
+        bytes32 guid = _computeGuid(nonce, SRC_EID, senderKey, DST_EID, address(dstApp));
+        bytes memory guidCombined = abi.encodePacked(guid, honestMessage);
+
+        vm.prank(dvnA.currentSigner());
+        dvnA.attest(headerHash, guidCombined, guidCombined, 10, 100);
+        vm.prank(address(dvnB));
+        dvnB.attest(headerHash, guidCombined, guidCombined, 10, 100);
+
+        bytes32 honestPayloadHash = keccak256(guidCombined);
+
+        vm.prank(ATTACKER);
+        uln.commitVerification(address(dstApp), SRC_EID, senderKey, nonce, headerHash, honestPayloadHash, DST_EID, 1);
+
+        vm.prank(ATTACKER);
+        dstEndpoint.lzReceive(address(dstApp), SRC_EID, senderKey, nonce, guid, honestMessage);
+
+        uint256 supplyAfter = dstApp.totalSupply();
+
+        assertEq(supplyAfter, supplyBefore + AMT, "reentrancy corrupted supply invariant - net change was not exactly AMT");
+        assertEq(dstApp.balanceOf(RECEIVER), AMT, "reentrancy corrupted recipient balance - not exactly AMT");
+    }
+
 }
