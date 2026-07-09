@@ -1929,6 +1929,24 @@ contract IceBallQuery is Test {
         dstEndpoint.lzReceive(address(dstApp), SRC_EID, freshSender, 2, bytes32(0), abi.encode(RECEIVER, AMT));
     }
 
+    function test_ASSERT_DefaultFullyEmpty_HOLDS_DIRECT() public {
+        // Zillion finding #4 claim: default pathway weakened to FULLY EMPTY
+        // (req=[], opt=[], thresh=0) after go-live, allowing zero-DVN
+        // commits for any OApp relying on the default. Current
+        // setDefaultPathway has an explicit _assertAtLeastOneDVN-equivalent
+        // guard the old Zillion version lacked entirely. Testing directly:
+        // does the guard block a fully-empty default from ever being SET
+        // in the first place (strongest possible proof - if the setter
+        // itself blocks it, the downstream exploit is structurally
+        // impossible, not just untested)?
+        address[] memory emptyReq = new address[](0);
+        address[] memory emptyOpt = new address[](0);
+
+        vm.prank(OWNER);
+        vm.expectRevert(UlnMock.LZ_ULN_AtLeastOneDVN.selector);
+        uln.setDefaultPathway(emptyReq, emptyOpt, 0, 0);
+    }
+
     // ================================================================
     // DIRECT tests for the remaining 5 findings (A01+D45, D45, K97, M99,
     // M100) - previously confirmed ONLY via harness self-detection
