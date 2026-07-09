@@ -2007,6 +2007,40 @@ contract IceBallQuery is Test {
         assertEq(committedHash, payloadHash, "commit did not actually record - inconclusive either way");
     }
 
+    function test_ASSERT_ComposeReplay_HOLDS_DIRECT() public {
+        // Zillion finding #6 claim: "a compose slot was executed twice
+        // (replay protection failure)". Testing directly: queue a
+        // legitimate compose, execute it once successfully, then attempt
+        // to execute the SAME slot again.
+        bytes32 guid = bytes32(uint256(424242));
+        bytes memory composeMsg = abi.encode(RECEIVER, uint256(1 ether));
+
+        vm.prank(address(dstApp));
+        dstEndpoint.sendCompose(address(dstApp), guid, 0, composeMsg);
+
+        // First execution - legitimate, should succeed.
+        vm.prank(ATTACKER);
+        dstEndpoint.lzCompose(address(dstApp), address(dstApp), guid, 0, composeMsg);
+
+        // Second execution of the SAME slot - must be rejected.
+        vm.prank(ATTACKER);
+        vm.expectRevert("compose already executed");
+        dstEndpoint.lzCompose(address(dstApp), address(dstApp), guid, 0, composeMsg);
+    }
+
+    function test_ASSERT_ComposeForgery_HOLDS_DIRECT() public {
+        // Zillion finding #7 claim: "lzCompose succeeded for a slot that
+        // was never queued via sendCompose (fabricated compose delivery)".
+        // Testing directly: call lzCompose for a guid/index that was NEVER
+        // passed to sendCompose at all.
+        bytes32 neverQueuedGuid = bytes32(uint256(999999999));
+        bytes memory forgedMsg = abi.encode(ATTACKER, uint256(1 ether));
+
+        vm.prank(ATTACKER);
+        vm.expectRevert("compose not queued");
+        dstEndpoint.lzCompose(address(dstApp), address(dstApp), neverQueuedGuid, 0, forgedMsg);
+    }
+
     // ================================================================
     // DIRECT tests for the remaining 5 findings (A01+D45, D45, K97, M99,
     // M100) - previously confirmed ONLY via harness self-detection
