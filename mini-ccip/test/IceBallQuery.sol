@@ -2261,6 +2261,43 @@ contract IceBallQuery is Test {
         assertTrue(dstCredited > actuallyRemoved, "COMBINED SUPPLY INCREASED: more was credited on destination than was ever removed on source");
     }
 
+    function test_ASSERT_ZeroAddressPeer_HOLDS_DIRECT() public {
+        // Zillion finding #13 claim: "zero-address peer accepted as valid
+        // sender". Broader root cause discovered while tracing this:
+        // OAppToken.lzReceive NEVER checks the incoming `sender` against
+        // its own `peers[srcEid]` mapping AT ALL - peers[] is only ever
+        // read on the SEND side. The only real gate on receive is whatever
+        // pathway the ULN was configured with. dstApp has an explicit
+        // pathway override ONLY for the real srcApp address; any OTHER
+        // sender key (including a fake/spoofed one that was never
+        // configured) falls back to the DEFAULT pathway, which requires
+        // just one DVN (dvnA). Testing directly: can a message claiming to
+        // be from a completely fake sender - NOT matching
+        // dstApp.peers[SRC_EID] at all - still be committed and delivered?
+        bytes32 fakeSender = bytes32(uint256(0xBADBEEF));
+        bytes32 realPeer = dstApp.peers(SRC_EID);
+        assertTrue(fakeSender != realPeer, "sanity: fake sender must not equal the real configured peer");
+
+        uint64 nonce = 1;
+        bytes memory message = abi.encode(RECEIVER, uint64(1000));
+        bytes32 headerHash = keccak256(abi.encodePacked(SRC_EID, fakeSender, DST_EID, address(dstApp), nonce));
+        bytes32 guid = _computeGuid(nonce, SRC_EID, fakeSender, DST_EID, address(dstApp));
+        bytes memory guidCombined = abi.encodePacked(guid, message);
+
+        vm.prank(dvnA.currentSigner());
+        dvnA.attest(headerHash, guidCombined, guidCombined, 10, 100);
+
+        vm.prank(ATTACKER);
+        uln.commitVerification(address(dstApp), SRC_EID, fakeSender, nonce, headerHash, keccak256(guidCombined), DST_EID, 1);
+
+        uint256 receiverBefore = dstApp.balanceOf(RECEIVER);
+        vm.prank(ATTACKER);
+        dstEndpoint.lzReceive(address(dstApp), SRC_EID, fakeSender, nonce, guid, message);
+        uint256 receiverAfter = dstApp.balanceOf(RECEIVER);
+
+        assertTrue(receiverAfter > receiverBefore, "SPOOFED SENDER ACCEPTED: dstApp credited a message from a sender that never matched its own configured peer");
+    }
+
     // ================================================================
     // DIRECT tests for the remaining 5 findings (A01+D45, D45, K97, M99,
     // M100) - previously confirmed ONLY via harness self-detection
