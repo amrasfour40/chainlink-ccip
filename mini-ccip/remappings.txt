@@ -1,0 +1,8 @@
+@layerzerolabs/lz-evm-protocol-v2/=lib/LayerZero-v2/packages/layerzero-v2/evm/protocol/
+@layerzerolabs/lz-evm-messagelib-v2/=lib/LayerZero-v2/packages/layerzero-v2/evm/messagelib/
+@layerzerolabs/oapp-evm/=lib/LayerZero-v2/packages/layerzero-v2/evm/oapp/
+@layerzerolabs/test-devtools-evm-foundry/=lib/devtools/packages/test-devtools-evm-foundry/
+@layerzerolabs/lz-evm-v1-0.7/=lib/LayerZero-v1/
+@openzeppelin/=lib/openzeppelin-contracts/
+solidity-bytes-utils/=lib/solidity-bytes-utils/
+forge-std/=lib/forge-std/src/

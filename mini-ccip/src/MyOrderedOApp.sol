@@ -2,13 +2,14 @@
 pragma solidity ^0.8.22;
 import { OApp, Origin, MessagingFee } from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
 import { OAppOptionsType3 } from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OAppOptionsType3.sol";
+import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
 contract MyOrderedOApp is OApp, OAppOptionsType3 {
     mapping(uint32 => mapping(bytes32 => uint64)) public receivedNonce;
     string public lastMessage;
     uint256 public receivedCount;
 
-    constructor(address _endpoint, address _delegate) OApp(_endpoint, _delegate) {}
+    constructor(address _endpoint, address _delegate) OApp(_endpoint, _delegate) Ownable(_delegate) {}
 
     function sendString(uint32 _dstEid, string calldata _message, bytes calldata _options) external payable {
         bytes memory payload = abi.encode(_message);
