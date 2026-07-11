@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
-import { OApp, Origin, MessagingFee } from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
+import { OApp, Origin, MessagingFee, MessagingReceipt } from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
 import { OAppOptionsType3 } from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OAppOptionsType3.sol";
 import { ILayerZeroComposer } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroComposer.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
@@ -13,9 +13,10 @@ contract MyComposingOApp is OApp, OAppOptionsType3, ILayerZeroComposer {
 
     constructor(address _endpoint, address _delegate) OApp(_endpoint, _delegate) Ownable(_delegate) {}
 
-    function sendString(uint32 _dstEid, string calldata _message, bytes calldata _options) external payable {
+    function sendString(uint32 _dstEid, string calldata _message, bytes calldata _options) external payable returns (bytes32 guid) {
         bytes memory payload = abi.encode(_message);
-        _lzSend(_dstEid, payload, combineOptions(_dstEid, 1, _options), MessagingFee(msg.value, 0), payable(msg.sender));
+        MessagingReceipt memory receipt = _lzSend(_dstEid, payload, combineOptions(_dstEid, 1, _options), MessagingFee(msg.value, 0), payable(msg.sender));
+        return receipt.guid;
     }
 
     function _lzReceive(

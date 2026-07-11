@@ -33,16 +33,15 @@ contract RealComposeTest is TestHelperOz5 {
             .addExecutorLzComposeOption(0, 200000, 0);
 
         vm.prank(OWNER);
-        aApp.sendString{value: 1 ether}(bEid, "trigger compose", options);
+        bytes32 guid = aApp.sendString{value: 1 ether}(bEid, "trigger compose", options);
 
         verifyPackets(bEid, address(bApp));
 
-        // Main lzReceive should have run and queued a compose.
         assertEq(bApp.receivedCount(), 1, "main message must deliver first");
         assertEq(bApp.composedCount(), 0, "compose must NOT have run yet - it's a separate step");
 
-        // Now explicitly execute the queued compose.
-        this.lzCompose(bEid, address(bApp), options, bytes32(0), address(bApp), abi.encode("composed follow-up"));
+        // Use the REAL guid captured from sendString's return value.
+        this.lzCompose(bEid, address(bApp), options, guid, address(bApp), abi.encode("composed follow-up"));
 
         assertEq(bApp.composedCount(), 1, "composed message must execute after explicit lzCompose call");
         assertEq(bApp.lastComposedMessage(), "composed follow-up", "composed content must match");
