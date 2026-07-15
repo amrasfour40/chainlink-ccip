@@ -1,0 +1,20 @@
+{
+  "lib/LayerZero-v1": {
+    "rev": "a1fb11a3b9c0ac449291816e71eacede4e36613e"
+  },
+  "lib/LayerZero-v2": {
+    "rev": "9c741e7f9790639537b1710a203bcdfd73b0b9ac"
+  },
+  "lib/devtools": {
+    "rev": "4973ba8bef7b0fdf7268469abea3ea50dbd4bbd8"
+  },
+  "lib/openzeppelin-contracts": {
+    "tag": {
+      "name": "v5.6.1",
+      "rev": "5fd1781b1454fd1ef8e722282f86f9293cacf256"
+    }
+  },
+  "lib/solidity-bytes-utils": {
+    "rev": "fc502455bb2a7e26a743378df042612dd50d1eb9"
+  }
+}
